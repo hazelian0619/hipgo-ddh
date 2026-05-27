@@ -1,2 +1,0 @@
-python 专家验证一致性/expert_validation.py --validation_data 专家验证一致性/expert_validation_dataset --expert_labels 专家验证一致性/医生标签 --model_path hip_model/models/model_best_20250506_163007.pth --llava_path hip_model/models/llava_med --output_dir 专家验证一致性/validation_results
-
