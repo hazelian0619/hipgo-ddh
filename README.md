@@ -25,15 +25,15 @@ hipgo/              # 核心包
     ├── backbone.py      # ResNet50 + FPN 特征提取器
     └── cnn_keypoint.py  # 纯CNN关键点检测（最佳架构）
 
-scripts/            # 入口脚本
-├── train.py        # 训练
-├── evaluate.py     # 逐点评估（MAE/PCK）
-├── cross_validate.py   # 5折交叉验证
-├── active_learn.py     # 主动学习TTA不确定性采样
-├── test_expert.py      # 专家测试集完整管线
-└── vlm_benchmark.py    # VLM零样本对比
+hipgo/scripts/       # 入口脚本
+├── train.py           # 训练
+├── evaluate.py        # 逐点评估（MAE/PCK）
+├── cross_validate.py  # 5折交叉验证
+├── active_learn.py    # 主动学习TTA不确定性采样
+└── test_expert.py     # 专家测试集完整管线
 
-hip_model/          # 实验代码（含CNN-GAT消融、HRNet等）
+examples/
+└── vlm_benchmark.py   # VLM零样本对比（Ollama / OpenAI）
 ```
 
 ## 快速开始
@@ -42,19 +42,19 @@ hip_model/          # 实验代码（含CNN-GAT消融、HRNet等）
 pip install -r requirements.txt
 
 # 训练
-python scripts/train.py --data_dir path/to/annotated/images --epochs 30
+python hipgo/scripts/train.py --data_dir path/to/annotated/images --epochs 30
 
 # 评估
-python scripts/evaluate.py --model_path outputs/best_model.pth --data_dir path/to/images
+python hipgo/scripts/evaluate.py --model_path outputs/best_model.pth --data_dir path/to/images
 
 # 5折交叉验证
-python scripts/cross_validate.py --data_dir path/to/images --epochs 30
+python hipgo/scripts/cross_validate.py --data_dir path/to/images --epochs 30
 
 # 主动学习选图
-python scripts/active_learn.py --model_path outputs/best_model.pth --top_k 20
+python hipgo/scripts/active_learn.py --model_path outputs/best_model.pth --unlabeled_dir path/to/images --top_k 20
 
 # 专家测试集管线
-python scripts/test_expert.py
+python hipgo/scripts/test_expert.py --model_path outputs/best_model.pth --expert_dir path/to/images --label_dir path/to/labels
 ```
 
 ## 数据格式
