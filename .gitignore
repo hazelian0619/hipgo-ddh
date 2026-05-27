@@ -20,3 +20,6 @@ build/
 hip_model/models/llava_med/
 *.safetensors
 *.bin
+shared_data/
+专家验证一致性/
+.DS_Store
