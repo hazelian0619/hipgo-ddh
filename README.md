@@ -14,26 +14,40 @@
 
 **专家测试集诊断准确率: 90.3%（195张，CE<25°/Sharp>45°/Tönnis>10°）**
 
+## 数据集
+
+| 数据集 | 数量 | 标注 | 说明 |
+|---|---|---|---|
+| `data/train/` | 80张 | 9关键点JSON | 训练集（60张原始+20张主动学习） |
+| `data/unlabeled/` | 200张 | 无 | 未标注池（主动学习候选） |
+| `data/expert_test/` | 200张 | 医生诊断标签 | 独立测试集 |
+
+来源：社交媒体公开的骨盆X光片，已去标识化。
+
 ## 项目结构
 
 ```
-hipgo/              # 核心包
-├── dataset.py      # 数据加载 + 增强（等比padding, CLAHE, 加权loss）
-├── transforms.py   # 图像变换
-├── angles.py       # 角度计算（CE/Sharp/Tönnis）
-└── models/
-    ├── backbone.py      # ResNet50 + FPN 特征提取器
-    └── cnn_keypoint.py  # 纯CNN关键点检测（最佳架构）
+data/                   # 数据集
+├── train/              # 80张已标注
+├── unlabeled/          # 200张未标注
+└── expert_test/        # 200张专家测试 (images/ + labels.json)
 
-hipgo/scripts/       # 入口脚本
-├── train.py           # 训练
-├── evaluate.py        # 逐点评估（MAE/PCK）
-├── cross_validate.py  # 5折交叉验证
-├── active_learn.py    # 主动学习TTA不确定性采样
-└── test_expert.py     # 专家测试集完整管线
+hipgo/                  # 核心包
+├── dataset.py
+├── transforms.py
+├── angles.py           # 角度计算+诊断规则
+├── models/
+│   ├── backbone.py
+│   └── cnn_keypoint.py
+└── scripts/
+    ├── train.py
+    ├── evaluate.py
+    ├── cross_validate.py
+    ├── active_learn.py
+    └── test_expert.py
 
 examples/
-└── vlm_benchmark.py   # VLM零样本对比（Ollama / OpenAI）
+└── vlm_benchmark.py
 ```
 
 ## 快速开始
