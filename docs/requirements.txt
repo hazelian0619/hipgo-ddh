@@ -1,0 +1,24 @@
+torch>=2.6.0
+torchvision>=0.21.0
+numpy
+opencv-python
+Pillow
+matplotlib
+tqdm
+tensorboard
+requests
+albumentations
+albumentations[imgaug]
+
+# LLaVA-Med相关依赖
+transformers>=4.36.0
+accelerate>=0.21.0
+bitsandbytes>=0.41.0
+peft>=0.6.0
+sentencepiece
+protobuf
+safetensors
+einops
+scipy
+
+# 其他依赖按需补充

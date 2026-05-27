@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+规范化我们的一切代码逻辑。
+如果是在ssh上编辑文件，不要选择本地上传，而是尽可能选择小范围在ssh上改动，优选nano编译器。

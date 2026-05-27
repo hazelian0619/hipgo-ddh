@@ -1,0 +1,6 @@
+Host hip_server
+    HostName 10.120.18.240
+    User xlian289-tNxksKkC
+    Port 6988
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null 

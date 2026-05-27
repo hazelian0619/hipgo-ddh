@@ -1,0 +1,98 @@
+% 骨盆X光片关键点检测方法 - 表格定义
+% 可以直接复制这些表格到现有LaTeX文档中使用
+
+% 表1: 模型比较
+\begin{table}[htbp]
+    \centering
+    \caption{不同骨盆X光片关键点检测方法的性能比较}
+    \label{tab:model_comparison}
+    \begin{threeparttable}
+        \begin{tabular}{lccccc}
+            \toprule
+            \multirow{2}{*}{方法} & \multicolumn{2}{c}{定位误差} & \multicolumn{2}{c}{成功率} & \multirow{2}{*}{参数量 (M)} \\
+            \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+            & MAE (mm) & RMSE (mm) & PCK@5mm (\%) & PCK@10mm (\%) & \\
+            \midrule
+            ResNet50-FPN & 8.76 & 12.32 & 58.3 & 84.6 & 25.6 \\
+            HRNet & 7.58 & 10.89 & 63.7 & 87.2 & 28.5 \\
+            ResNet50-FPN + MLP & 7.24 & 10.15 & 66.2 & 89.3 & 26.8 \\
+            HRNet + MLP & 6.82 & 9.74 & 68.5 & 90.5 & 29.7 \\
+            ResNet50-FPN + GCN & 6.35 & 9.18 & 72.1 & 92.7 & 27.3 \\
+            ResNet50-FPN + GAT (ours) & \textbf{5.67} & \textbf{8.45} & \textbf{76.4} & \textbf{94.8} & 27.5 \\
+            HRNet + GAT & 5.43 & 8.32 & 77.2 & 95.1 & 30.2 \\
+        \end{tabular}
+        \begin{tablenotes}
+            \footnotesize
+            \item[*] MAE: 平均绝对误差; RMSE: 均方根误差; PCK: 正确关键点百分比
+            \item 粗体表示本文方法的性能指标
+        \end{tablenotes}
+    \end{threeparttable}
+\end{table}
+
+% 表2: 关键点精度
+\begin{table}[htbp]
+    \centering
+    \caption{骨盆X光片各关键点的检测精度比较 (MAE, mm)}
+    \label{tab:keypoint_accuracy}
+    \begin{tabular}{lccc>{\columncolor[gray]{0.9}}c}
+        \toprule
+        关键点 & ResNet50-FPN & HRNet & \textbf{本文方法} & 改进 (\%) \\
+        \midrule
+        髋臼前缘 & 7.45 & 6.81 & \textbf{4.23} & 37.9 \\
+        髋臼后缘 & 8.12 & 7.23 & \textbf{4.85} & 32.9 \\
+        股骨头中心 & 6.32 & 5.87 & \textbf{3.92} & 33.2 \\
+        大转子 & 9.86 & 8.53 & \textbf{6.74} & 21.0 \\
+        小转子 & 10.42 & 9.42 & \textbf{7.21} & 23.5 \\
+        髂嵴最高点 & 10.05 & 8.95 & \textbf{6.82} & 23.8 \\
+        骶骨前上缘 & 8.73 & 7.64 & \textbf{5.73} & 25.0 \\
+        耻骨联合上缘 & 7.92 & 6.82 & \textbf{5.12} & 24.9 \\
+        坐骨前下缘 & 9.95 & 8.46 & \textbf{6.43} & 24.0 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% 表3: 消融实验
+\begin{table}[htbp]
+    \centering
+    \caption{网络结构不同组件的消融实验结果}
+    \label{tab:ablation_studies}
+    \begin{tabular}{lcccc}
+        \toprule
+        \multirow{2}{*}{模型配置} & \multicolumn{2}{c}{定位误差} & \multicolumn{2}{c}{成功率} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        & MAE (mm) & RMSE (mm) & PCK@5mm (\%) & PCK@10mm (\%) \\
+        \midrule
+        ResNet50-FPN (基准) & 8.76 & 12.32 & 58.3 & 84.6 \\
+        + 全连接融合 & 7.24 & 10.15 & 66.2 & 89.3 \\
+        + 简单图卷积 & 6.83 & 9.76 & 69.1 & 90.7 \\
+        + 注意力机制 & 6.15 & 8.94 & 72.5 & 92.5 \\
+        + 边特征增强 & 5.84 & 8.63 & 74.8 & 93.9 \\
+        + 多头注意力 (完整模型) & \textbf{5.67} & \textbf{8.45} & \textbf{76.4} & \textbf{94.8} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% 表4: 数据集比较
+\begin{table}[htbp]
+    \centering
+    \caption{不同数据集对检测性能的影响}
+    \label{tab:dataset_comparison}
+    \begin{threeparttable}
+        \begin{tabular}{lcccc}
+            \toprule
+            \multirow{2}{*}{数据集} & \multicolumn{2}{c}{定位误差} & \multicolumn{2}{c}{成功率} \\
+            \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+            & MAE (mm) & RMSE (mm) & PCK@5mm (\%) & PCK@10mm (\%) \\
+            \midrule
+            专家标注集 (60张)\tnote{*} & 8.47 & 11.83 & 56.8 & 85.3 \\
+            扩展数据集 (260张)\tnote{\dag} & 6.82 & 9.74 & 68.7 & 90.2 \\
+            混合数据集 (全部) & \textbf{5.67} & \textbf{8.45} & \textbf{76.4} & \textbf{94.8} \\
+            \bottomrule
+        \end{tabular}
+        \begin{tablenotes}
+            \footnotesize
+            \item[*] 专家标注集为60张高质量标注的骨盆X光片
+            \item[\dag] 扩展数据集包含自动标注和半监督学习生成的数据
+        \end{tablenotes}
+    \end{threeparttable}
+\end{table} 

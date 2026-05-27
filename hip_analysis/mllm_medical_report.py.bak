@@ -1,0 +1,371 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+骨盆X光片多模态医学大语言模型
+基于LLaVA-Med实现的医学报告生成系统
+"""
+
+import os
+import sys
+import json
+import numpy as np
+import torch
+from PIL import Image
+import matplotlib.pyplot as plt
+import argparse
+from pathlib import Path
+from typing import List, Dict, Any, Tuple, Union, Optional
+
+# 添加项目根目录到路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+
+# 在文件顶部导入部分添加
+try:
+    from llava.model.builder import load_pretrained_model
+    from llava.model import LlavaMistralForCausalLM  # 添加这一行
+    from llava.mm_utils import get_model_name_from_path
+    LLAVA_AVAILABLE = True
+except ImportError:
+    print("警告: 无法导入LLaVA模块，将使用AutoModelForCausalLM")
+    LLAVA_AVAILABLE = False
+
+
+
+
+# 尝试导入角度计算模块
+try:
+    from visualize_angles import calculate_angles, load_keypoints_from_json, angle_between_vectors
+except ImportError:
+    print("警告: 无法导入角度计算模块，请确保visualize_angles.py在正确位置")
+
+# 导入LLaVA-Med相关模块
+from transformers import AutoProcessor, AutoModelForCausalLM
+import torch.nn.functional as F
+
+class HipMLLM:
+    """骨盆X光片多模态医学大语言模型"""
+    
+    def __init__(
+        self, 
+        model_path: str = "liuhaotian/llava-med-v1.0-7b", 
+        device: str = None,
+        low_resource: bool = False
+    ):
+        """
+        初始化多模态医学大语言模型
+        
+        参数:
+            model_path: 模型路径或Hugging Face模型名称
+            device: 设备类型('cuda', 'cpu', 'mps')，如果为None则自动检测
+            low_resource: 是否在低资源模式下运行(低显存设备)
+        """
+        self.model_path = model_path
+        
+        # 设置设备
+        if device is None:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = "mps"
+            else:
+                self.device = "cpu"
+        else:
+            self.device = device
+            
+        print(f"使用设备: {self.device}")
+        
+        # 低资源模式设置
+        self.low_resource = low_resource
+        self.dtype = torch.float16 if not low_resource and self.device != "cpu" else torch.float32
+        
+        # 加载模型和处理器
+        self._load_model()
+        
+    def _load_model(self):
+        """加载LLaVA-Med模型和处理器"""
+        print(f"加载多模态医学大语言模型: {self.model_path}")
+    
+        try:
+            # 1. 检测模型类型
+            from transformers import AutoConfig, AutoTokenizer
+            
+            config = AutoConfig.from_pretrained(self.model_path)
+            model_type = getattr(config, "model_type", "")
+            print(f"检测到模型类型: {model_type}")
+            
+            # 2. 加载tokenizer (通用部分)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+            self.processor = self.tokenizer
+            
+            # 3. 根据模型类型选择加载器
+            if "llava_mistral" in model_type:
+                # Mistral专用加载
+                try:
+                    # 尝试从llava包导入
+                    from llava.model import LlavaMistralForCausalLM
+                    self.model = LlavaMistralForCausalLM.from_pretrained(
+                        self.model_path,
+                        torch_dtype=self.dtype
+                    ).to(self.device)
+                    print("使用LlavaMistralForCausalLM加载成功")
+                except ImportError:
+                    # 如果导入失败，使用通用加载器
+                    print("无法导入LlavaMistralForCausalLM，使用通用加载器")
+                    from transformers import AutoModelForCausalLM
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.model_path,
+                        torch_dtype=self.dtype
+                    ).to(self.device)
+                    print("使用AutoModelForCausalLM加载成功")
+            else:
+                # 通用加载
+                from transformers import AutoModelForCausalLM
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_path,
+                    torch_dtype=self.dtype
+                ).to(self.device)
+                print("使用AutoModelForCausalLM加载成功")
+                
+        except Exception as e:
+            print(f"LLaVA-Med模型加载失败: {str(e)}")
+            print("请确保已正确安装LLaVA并下载模型文件")
+            raise RuntimeError(f"无法加载LLaVA-Med模型: {str(e)}")
+    
+    
+    def generate_report(
+        self, 
+        image_path: str, 
+        keypoints_path: Optional[str] = None, 
+        angles_data: Optional[Dict] = None,
+        prompt: Optional[str] = None,
+        max_new_tokens: int = 1024,
+        temperature: float = 0.2,
+        output_dir: str = "reports"
+    ) -> str:
+        """
+        生成骨盆X光片医学报告
+        
+        参数:
+            image_path: X光片图像路径
+            keypoints_path: 骨盆关键点JSON文件路径(可选)
+            angles_data: 预计算的角度数据(可选)
+            prompt: 自定义提示词(可选)
+            max_new_tokens: 生成的最大token数
+            temperature: 生成温度
+            output_dir: 报告输出目录
+            
+        返回:
+            str: 生成的医学报告
+        """
+        print(f"处理图像: {image_path}")
+        
+        # 提取结构化数据(如有关键点文件)
+        if angles_data is not None:
+            structured_data = {"angles": angles_data}
+        else:
+            structured_data = self._extract_structured_data(image_path, keypoints_path)
+            
+        angles_str = self._format_angles_for_prompt(structured_data)
+        
+        # 构建提示词
+        if prompt is None:
+            prompt = self._build_default_prompt(angles_str)
+        
+        # 加载并处理图像
+        image = Image.open(image_path).convert("RGB")
+        
+        # 检查是否是v1.5版本的LLaVA-Med模型
+        if hasattr(self, 'tokenizer'):
+            # LLaVA-Med v1.5模型
+            print("使用LLaVA-Med v1.5生成报告...")
+            
+            # 使用v1.5的输入格式
+            from transformers import TextIteratorStreamer
+            
+            # 构建对话历史
+            conversation = [
+                {"role": "user", "content": [{"type": "image", "source": image}, {"type": "text", "text": prompt}]}
+            ]
+            
+            # 使用tokenizer处理对话
+            inputs = self.tokenizer.apply_chat_template(
+                conversation=conversation,
+                tokenize=True,
+                return_tensors="pt"
+            ).to(self.device)
+            
+            # 生成文本
+            print("生成医学报告中...")
+            with torch.no_grad():
+                output = self.model.generate(
+                    inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    do_sample=temperature > 0.0,
+                )
+            
+            # 解码输出
+            generated_text = self.tokenizer.decode(output[0][inputs.shape[1]:], skip_special_tokens=True)
+            answer = generated_text.strip()
+            
+        else:
+            # 原始LLaVA-Med v1.0模型
+            print("使用LLaVA-Med v1.0生成报告...")
+            
+            # 准备多模态输入
+            inputs = self.processor(
+                prompt=prompt,
+                images=image,
+                return_tensors="pt"
+            ).to(self.device)
+            
+            # 生成文本
+            print("生成医学报告中...")
+            with torch.no_grad():
+                output = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature
+                )
+            
+            # 解码输出
+            generated_text = self.processor.decode(output[0], skip_special_tokens=True)
+            
+            # 提取回答部分
+            answer = generated_text.split("ASSISTANT: ")[-1].strip()
+        
+        # 保存结果
+        os.makedirs(output_dir, exist_ok=True)
+        report_path = os.path.join(output_dir, os.path.basename(image_path).split('.')[0] + "_mllm_report.txt")
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(answer)
+        
+        print(f"报告已生成并保存至: {report_path}")
+        return answer
+    
+    def _extract_structured_data(self, image_path: str, keypoints_path: Optional[str] = None) -> Dict:
+        """提取结构化数据，包括关键点和角度"""
+        # 默认角度值
+        angles = {
+            "left_ce_angle": None,
+            "right_ce_angle": None,
+            "left_sharp_angle": None,
+            "right_sharp_angle": None,
+            "left_tonnis_angle": None,
+            "right_tonnis_angle": None
+        }
+        
+        # 如果提供了关键点文件，从中计算角度
+        if keypoints_path and os.path.exists(keypoints_path):
+            try:
+                keypoints = load_keypoints_from_json(keypoints_path)
+                
+                # 读取图像获取尺寸
+                import cv2
+                image = cv2.imread(image_path)
+                h, w = image.shape[:2]
+                
+                # 转换关键点坐标
+                keypoints_pixel = []
+                if np.all(np.array(keypoints) <= 1.0):
+                    for kp in keypoints:
+                        x = int(kp[0] * w)
+                        y = int(kp[1] * h)
+                        keypoints_pixel.append([x, y])
+                else:
+                    keypoints_pixel = keypoints.copy()
+                
+                # 计算角度
+                angles = calculate_angles(keypoints_pixel)
+                print("已从关键点文件计算角度")
+            except Exception as e:
+                print(f"从关键点计算角度失败: {str(e)}")
+                print("使用默认角度值")
+                angles = {
+                    "left_ce_angle": 25.0,
+                    "right_ce_angle": 28.0,
+                    "left_sharp_angle": 37.0,
+                    "right_sharp_angle": 35.0,
+                    "left_tonnis_angle": 8.0,
+                    "right_tonnis_angle": 7.0
+                }
+        
+        # 构建结构化数据
+        return {
+            "angles": angles,
+            "normal_ranges": {
+                "CE": {"min": 25, "max": 40, "description": "Center-Edge角，测量髋臼对股骨头的覆盖程度"},
+                "Sharp": {"min": 33, "max": 38, "description": "股骨头中心到髋臼外缘的连线与水平线的夹角"},
+                "Tonnis": {"min": 0, "max": 10, "description": "髋臼荷重面与水平线的夹角"}
+            }
+        }
+    
+    def _format_angles_for_prompt(self, structured_data: Dict) -> str:
+        """将角度数据格式化为可用于提示词的文本"""
+        angles = structured_data["angles"]
+        
+        # 格式化角度信息
+        if all(v is not None for v in angles.values()):
+            return f"""
+测量结果：
+- 左侧CE角: {angles['left_ce_angle']:.1f}° (正常范围: 25-40°)
+- 右侧CE角: {angles['right_ce_angle']:.1f}° (正常范围: 25-40°)
+- 左侧Sharp角: {angles['left_sharp_angle']:.1f}° (正常范围: 33-38°)
+- 右侧Sharp角: {angles['right_sharp_angle']:.1f}° (正常范围: 33-38°)
+- 左侧Tönnis角: {angles['left_tonnis_angle']:.1f}° (正常范围: 0-10°)
+- 右侧Tönnis角: {angles['right_tonnis_angle']:.1f}° (正常范围: 0-10°)
+"""
+        else:
+            return ""
+    
+    def _build_default_prompt(self, angles_str: str) -> str:
+        """构建默认提示词"""
+        return f"""USER: <image>
+我是放射科医生，请帮我分析这张骨盆X光片，并生成一份详细的医学报告。
+
+{angles_str}
+
+请提供以下内容：
+1. 髋关节形态学描述
+2. 测量结果解读
+3. 诊断意见（是否存在发育性髋关节发育不良，严重程度如何）
+4. 治疗建议
+
+请按照标准放射学报告格式输出，使用专业但清晰的语言。
+
+ASSISTANT: """
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(description='骨盆X光片多模态医学大语言模型')
+    parser.add_argument('--image', type=str, required=True, help='X光片图像路径')
+    parser.add_argument('--keypoints', type=str, help='骨盆关键点JSON文件路径')
+    parser.add_argument('--model', type=str, default="liuhaotian/llava-med-v1.0-7b", help='模型路径或名称')
+    parser.add_argument('--device', type=str, choices=['cuda', 'cpu', 'mps'], help='设备类型')
+    parser.add_argument('--low_resource', action='store_true', help='低资源模式')
+    parser.add_argument('--output_dir', type=str, default="reports", help='报告输出目录')
+    
+    args = parser.parse_args()
+    
+    # 初始化模型
+    mllm = HipMLLM(
+        model_path=args.model,
+        device=args.device,
+        low_resource=args.low_resource
+    )
+    
+    # 生成报告
+    report = mllm.generate_report(
+        image_path=args.image,
+        keypoints_path=args.keypoints,
+        output_dir=args.output_dir
+    )
+    
+    print("\n生成的医学报告:")
+    print("-" * 50)
+    print(report)
+    print("-" * 50)
+
+if __name__ == "__main__":
+    main() 
